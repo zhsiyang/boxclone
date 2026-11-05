@@ -21,6 +21,7 @@ cd "$IOS"
 rm -rf "$IOS/build"
 
 echo "▶ xcodebuild (Release / iphoneos / 不签名) …"
+LOG="$IOS/build/xcodebuild.log"
 set +e
 xcodebuild \
     -workspace "$PROJECT.xcworkspace" \
@@ -33,17 +34,43 @@ xcodebuild \
     CODE_SIGN_IDENTITY="" \
     AD_HOC_CODE_SIGNING_ALLOWED=YES \
     ENABLE_BITCODE=NO \
-    2>&1 | tail -40
-XCODE_RC=${PIPESTATUS[0]}
+    > "$LOG" 2>&1
+XCODE_RC=$?
 set -e
+tail -40 "$LOG"
+
+# 退出码必须为 0。上一版只看 .app 目录在不在，xcodebuild 中途失败时目录已经建好了，
+# 于是打了个空壳还报成功。
+if [ "$XCODE_RC" -ne 0 ]; then
+    echo ""
+    echo "✗ xcodebuild 失败 rc=$XCODE_RC"
+    echo "--- 错误行 ---"
+    grep -nE "error:|BUILD FAILED|failed with" "$LOG" | tail -25 || true
+    exit 1
+fi
 
 APP="$DD/Build/Products/Release-iphoneos/$PROJECT.app"
 if [ ! -d "$APP" ]; then
-    echo "✗ 编译失败（xcodebuild rc=$XCODE_RC），没找到 $APP"
-    echo "--- DerivedData 内容 ---"
+    echo "✗ 没找到 $APP（xcodebuild rc=$XCODE_RC）"
     ls -R "$DD" 2>/dev/null | head -40
     exit 1
 fi
+
+# 产物完整性三重检查：Info.plist、主二进制、第三方 framework/pod 资源
+for need in "$APP/Info.plist" "$APP/$PROJECT" "$APP/Frameworks"; do
+    if [ ! -e "$need" ]; then
+        echo "✗ 产物缺 $need —— 编译没真正完成"
+        exit 1
+    fi
+done
+
+# 主二进制至少 1 MB；空壳只有几十 KB
+BIN_SIZE=$(wc -c < "$APP/$PROJECT" | tr -d ' ')
+if [ "$BIN_SIZE" -lt 1000000 ]; then
+    echo "✗ 主二进制只有 ${BIN_SIZE} B，明显是空壳"
+    exit 1
+fi
+echo "   主二进制 $(($BIN_SIZE / 1024)) KB"
 
 echo "▶ 打包 .ipa …"
 rm -rf "$IOS/build/Payload"

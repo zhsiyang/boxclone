@@ -90,16 +90,82 @@ const write = (p, c) => {
     write(p, s);
 })();
 
+/**
+ * 按标签深度配对，定位 `<key>K</key>` 后面的那个值节点，返回 [start, end) 区间。
+ *
+ * 不能用非贪婪正则：模板里的 NSAppTransportSecurity 是 dict 套 dict，
+ * `[\s\S]*?</dict>` 会停在内层 </dict>，删完留下落单的闭合标签，
+ * builtin-infoPlistUtility 直接报 PropertyListConversionError。
+ */
+function findValueNode(xml, key, from) {
+    const k = `<key>${key}</key>`;
+    const ki = xml.indexOf(k, from || 0);
+    if (ki < 0) return null;
+
+    let i = ki + k.length;
+    while (i < xml.length && /\s/.test(xml[i])) i++;
+
+    const head = xml.slice(i, i + 6);
+    const isArray = head.startsWith('<array');
+    const isDict = head.startsWith('<dict');
+    if (!isArray && !isDict) {
+        // 标量：<string>..</string> / <true/> / <false/>
+        const gt = xml.indexOf('>', i);
+        if (gt < 0) return null;
+        if (xml.slice(i, i + 2) === '</') return null;
+        if (xml[gt - 1] === '/') return { start: ki, end: gt + 1 };
+        const m = /^<([A-Za-z]+)/.exec(xml.slice(i));
+        if (!m) return null;
+        const closeS = xml.indexOf(`</${m[1]}>`, i);
+        if (closeS < 0) return null;
+        return { start: ki, end: closeS + m[1].length + 3 };
+    }
+
+    const tag = isArray ? 'array' : 'dict';
+    const open = `<${tag}`;
+    const close = `</${tag}>`;
+    let depth = 0;
+    let j = i;
+    while (j < xml.length) {
+        const o = xml.indexOf(open, j);
+        const c = xml.indexOf(close, j);
+        if (c < 0) return null;
+        if (o >= 0 && o < c) {
+            const gt = xml.indexOf('>', o);
+            if (gt < 0) return null;
+            if (xml[gt - 1] === '/') {
+                j = gt + 1;            // <dict/> 自闭合，不加深度
+            } else {
+                depth++;
+                j = o + open.length;
+            }
+        } else {
+            depth--;
+            j = c + close.length;
+            if (depth === 0) return { start: ki, end: j };
+        }
+    }
+    return null;
+}
+
 /** 删掉除最后一次出现的 key（保留我们刚注入的那份） */
 function stripDupKey(plist, key) {
-    const re = new RegExp(`<key>${key}</key>\\s*<(array|dict)>[\\s\\S]*?</\\1>`, 'g');
-    const all = plist.match(re);
-    if (!all || all.length <= 1) return plist;
-    let seen = 0;
-    return plist.replace(re, (m) => {
-        seen++;
-        return seen < all.length ? '' : m;
-    });
+    const spans = [];
+    let from = 0;
+    for (;;) {
+        const n = findValueNode(plist, key, from);
+        if (!n) break;
+        spans.push(n);
+        from = n.end;
+    }
+    if (spans.length <= 1) return plist;
+
+    // 从后往前删，避免前面的下标失效
+    let out = plist;
+    for (let i = spans.length - 2; i >= 0; i--) {
+        out = out.slice(0, spans[i].start) + out.slice(spans[i].end);
+    }
+    return out;
 }
 
 /* ---------- 2) AppDelegate ---------- */
