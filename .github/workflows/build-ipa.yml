@@ -1,0 +1,108 @@
+name: Build iOS IPA
+
+# 触发方式：
+#   1) 仓库 Actions 页 → Build iOS IPA → Run workflow（手动）
+#   2) push 到 overlay / 构建脚本时自动跑
+#
+# 产物：本次运行页底部 Artifacts → BoxClone-unsigned-ipa
+# 未签名，装之前用 Sideloadly / AltStore / TrollStore 自签。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'overlay/**'
+      - 'setup.sh'
+      - 'build-ipa.sh'
+      - 'patch.js'
+      - '.github/workflows/build-ipa.yml'
+
+jobs:
+  build:
+    # RN 0.72 + nodejs-mobile 只在 Xcode 15.x 上稳，macos-14 镜像自带 15.4。
+    # 如果哪天 macos-14 下线，把这里换成 macos-15，下面的选版逻辑会自动挑 15.x/16.x 里存在的那个。
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          echo "--- 可用 Xcode ---"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          # 优先 15.4（RN 0.72 官方验证过的版本），退而求其次 15.x，最后交给默认
+          PICK=""
+          for v in 15.4 15.3 15.2 15.1 15.0; do
+            if [ -d "/Applications/Xcode_${v}.app" ]; then PICK="/Applications/Xcode_${v}.app"; break; fi
+          done
+          if [ -z "$PICK" ]; then
+            PICK="$(ls -d /Applications/Xcode_15*.app 2>/dev/null | head -1)"
+          fi
+          if [ -n "$PICK" ]; then
+            echo "选中 $PICK"
+            sudo xcode-select -s "$PICK/Contents/Developer"
+          else
+            echo "没有 15.x，沿用默认 Xcode"
+          fi
+          xcodebuild -version
+
+      - name: Show toolchain
+        run: |
+          node -v
+          npm -v
+          pod --version || echo "pod 未装（后面 pod install 会用到）"
+
+      # metro / npm 阶段用新 Node 更稳（nodejs-mobile 的 postinstall 也能过）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: pods-${{ runner.os }}-${{ hashFiles('patch.js') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Setup JS shell + overlay + native patches
+        run: |
+          chmod +x setup.sh build-ipa.sh
+          ./setup.sh --skip-pod
+
+      # nodejs-mobile 的构建阶段要求 Node 18，npm 干完活再切回去
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Pod install
+        working-directory: app/ios
+        run: pod install --repo-update
+
+      - name: Build unsigned IPA
+        run: ./build-ipa.sh
+
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxClone-unsigned-ipa
+          path: app/ios/build/BoxClone.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            app/ios/
+            ~/Library/Logs/
+            ${{ runner.temp }}
+          if-no-files-found: ignore
+          retention-days: 7

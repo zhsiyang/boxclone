@@ -1,0 +1,63 @@
+name: Node Spider Tests
+
+# 内嵌服务的逻辑全部可以在普通 Node 上跑，所以单独一个快 job 守住这块。
+# iOS 构建要 40+ 分钟，不该为了验证爬虫逻辑去等它。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'overlay/nodejs-project/**'
+      - 'test/**'
+      - '.github/workflows/node-test.yml'
+  pull_request:
+    paths:
+      - 'overlay/nodejs-project/**'
+      - 'test/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Syntax check (Node side)
+        run: |
+          for f in overlay/nodejs-project/*.js overlay/nodejs-project/spiders/*.js; do
+            node --check "$f" || exit 1
+            echo "ok  $f"
+          done
+
+      - name: Run spider test suite
+        run: node test/local_test.js
+
+      - name: Verify patch.js runs clean
+        run: |
+          mkdir -p /tmp/fakeapp/ios/BoxClone
+          cat > /tmp/fakeapp/ios/BoxClone/Info.plist <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>OldName</string>
+</dict>
+</plist>
+PLIST
+          cat > /tmp/fakeapp/ios/BoxClone/AppDelegate.mm <<'MM'
+#import "AppDelegate.h"
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+  return YES;
+}
+MM
+          printf "platform :ios, '13.4'\n" > /tmp/fakeapp/ios/Podfile
+          node patch.js /tmp/fakeapp
+          grep -q UIBackgroundModes /tmp/fakeapp/ios/BoxClone/Info.plist
+          grep -q AVAudioSession /tmp/fakeapp/ios/BoxClone/AppDelegate.mm
+          echo "patch.js ok"

@@ -1,0 +1,19 @@
+# 装配产物，每次 setup.sh 重新生成
+app/
+
+# 依赖
+node_modules/
+package-lock.json
+
+# 测试临时目录
+test/.tmp/
+
+# 构建产物
+*.ipa
+*.app
+*.xcarchive
+DerivedData/
+
+# 系统
+.DS_Store
+Thumbs.db

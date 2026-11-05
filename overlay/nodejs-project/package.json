@@ -1,0 +1,8 @@
+{
+    "name": "boxclone-node",
+    "version": "1.0.0",
+    "description": "BoxClone 内嵌爬虫服务（零依赖）",
+    "main": "main.js",
+    "private": true,
+    "dependencies": {}
+}

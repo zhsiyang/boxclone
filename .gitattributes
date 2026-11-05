@@ -1,0 +1,18 @@
+# 全部按 LF 落地。shell 脚本带 CRLF 在 macOS runner 上会
+# 报 /bin/bash^M: bad interpreter，是 CI 失败最常见的原因。
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.command text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.js    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+
+# 二进制
+*.ipa   binary
+*.png   binary
+*.jpg   binary
