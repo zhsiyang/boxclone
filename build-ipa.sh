@@ -19,6 +19,7 @@ fi
 
 cd "$IOS"
 rm -rf "$IOS/build"
+mkdir -p "$IOS/build"     # 下一行的日志重定向要用这个目录，别省
 
 echo "▶ xcodebuild (Release / iphoneos / 不签名) …"
 LOG="$IOS/build/xcodebuild.log"
