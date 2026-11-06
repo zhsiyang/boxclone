@@ -2,6 +2,8 @@
  * 视觉基线。纯黑底 + 蓝紫强调，海报为主视觉，文字只用三档灰度。
  * key 名保持和旧版一致，其它页面不用跟着改就能吃到新配色。
  */
+import { Platform } from 'react-native';
+
 export const T = {
     // 背景层次（越靠上层越亮一档）
     bg: '#000000',
@@ -45,8 +47,20 @@ export const T = {
     },
 };
 
-/** 悬浮 TabBar 占的高度，可滚动页面底部必须留出这段，否则最后一排被盖住 */
-export const TABBAR_SPACE = 104;
+/**
+ * 悬浮 TabBar 占的高度，可滚动页面底部必须留出这段，否则最后一排被盖住。
+ * Android 手势导航条会额外吃掉 16-24dp，这里多留一点。
+ */
+export const TABBAR_SPACE = Platform.OS === 'android' ? 116 : 104;
+
+/**
+ * 悬浮 TabBar 距屏幕底的距离。
+ * iOS 靠 SafeAreaView 兜了 home indicator，Android 没有这层，要自己抬。
+ */
+export const TABBAR_BOTTOM = Platform.OS === 'android' ? 22 : 14;
+
+/** iOS 走 SafeAreaView，Android 状态栏不透明、window 已排除，两边都不用额外 padding */
+export const IS_ANDROID = Platform.OS === 'android';
 
 /** 海报素材多数是 2:3，但竖版剧照实际比 1.45 高一点，按参考稿取 1.47 */
 export const POSTER_RATIO = 1.47;

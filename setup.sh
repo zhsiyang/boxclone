@@ -72,6 +72,9 @@ cp -R "$HERE/overlay/nodejs-project/spiders"     "$APP_DIR/nodejs-assets/nodejs-
 echo "▶ 注入 iOS 原生配置 …"
 node "$HERE/patch.js" "$APP_DIR"
 
+echo "▶ 注入 Android 原生配置 …"
+node "$HERE/patch-android.js" "$APP_DIR"
+
 if [ "$SKIP_POD" = "true" ]; then
     echo "⏭ 跳过 pod install（--skip-pod）"
 else
@@ -83,4 +86,5 @@ fi
 
 echo ""
 echo "✅ 装配完成：$APP_DIR"
-echo "   下一步： $HERE/build-ipa.sh"
+echo "   iOS : $HERE/build-ipa.sh"
+echo "   Android: $HERE/build-apk.sh"

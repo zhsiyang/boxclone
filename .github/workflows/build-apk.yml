@@ -1,0 +1,96 @@
+name: Build Android APK
+
+# 触发方式：
+#   1) 仓库 Actions 页 → Build Android APK → Run workflow（手动）
+#   2) push 到 overlay / 构建脚本时自动跑
+#
+# 产物：本次运行页底部 Artifacts → BoxClone-apk
+# release 包，用工程内自动生成的 keystore 签名（boxclone/boxclone），可直接安装。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'overlay/**'
+      - 'setup.sh'
+      - 'build-apk.sh'
+      - 'patch-android.js'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    # Android 不需要 macOS，ubuntu 便宜且快，一次 15-20 分钟
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform 33 + NDK + CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          # NDK 版本必须是 RN 0.72 模板 android/build.gradle 里写的那个，
+          # nodejs-mobile 也会读 rootProject.ext.ndkVersion 来编自己的 CMake 工程
+          sdkmanager "platforms;android-33" "build-tools;33.0.2" \
+                     "ndk;23.1.7779620" "cmake;3.22.1" > /dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "NDK: $ANDROID_HOME/ndk/23.1.7779620"
+          ls "$ANDROID_HOME/ndk/"
+
+      # metro / npm 阶段用新 Node 更稳（nodejs-mobile 的 postinstall 也能过）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('patch-android.js') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Setup JS shell + overlay + native patches
+        run: |
+          chmod +x setup.sh build-apk.sh
+          ./setup.sh --skip-pod
+
+      # nodejs-mobile 的构建阶段要求 Node 18
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build APK
+        run: ./build-apk.sh
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxClone-apk
+          path: app/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-logs
+          path: |
+            app/android/build-release.log
+            app/android/app/build/outputs/logs/
+          if-no-files-found: ignore
+          retention-days: 7

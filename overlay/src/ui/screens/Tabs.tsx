@@ -9,7 +9,7 @@ import Search from './Search';
 import Catalog from './Catalog';
 import Mine from './Mine';
 import { IconGrid, IconHome, IconSearch, IconUser } from '../components/Icons';
-import { T } from '../../theme';
+import { T, TABBAR_BOTTOM } from '../../theme';
 
 type TabKey = 'home' | 'search' | 'catalog' | 'mine';
 
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         left: 14,
         right: 14,
-        bottom: 14,
+        bottom: TABBAR_BOTTOM,
         height: 62,
         borderRadius: 31,
         flexDirection: 'row',

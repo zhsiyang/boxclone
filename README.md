@@ -1,8 +1,12 @@
-# BoxClone — iOS 影视聚合客户端（内嵌 Node 运行时）
+# BoxClone — iOS / Android 影视聚合客户端（内嵌 Node 运行时）
 
 复刻 iBox 的功能形态：多源浏览、聚合搜索、多线路选集、播放记忆、后台续播。
 技术路线沿用饭佬那套（CatVodOpen iOS 端）的架构——**React Native 做界面，nodejs-mobile 在子线程跑 Node 18，
 爬虫逻辑跑在 Node 侧，RN 通过本机 HTTP 调它**。
+
+**同一套代码出两个平台**：iOS 走 `build-ipa.sh`（macOS + Xcode），
+Android 走 `build-apk.sh`（任意平台 + JDK + Android SDK）。界面、爬虫、状态全在 `overlay/` 里共用，
+平台差异只有 `patch.js` / `patch-android.js` 两个原生配置注入脚本。
 
 跟原版的两处关键差别：
 
@@ -124,6 +128,23 @@ cd app/ios && pod install --repo-update && cd ../..
 
 单次约 40–60 分钟（首次 pod 缓存没建立时更久）。
 
+### Android（不需要 Mac）
+
+```bash
+chmod +x setup.sh build-apk.sh
+./setup.sh --skip-pod          # Android 不需要 CocoaPods
+./build-apk.sh                 # → app/android/app/build/outputs/apk/release/app-release.apk
+```
+
+环境要求：JDK 17、Android SDK（platform 33 + build-tools 33.0.2 + **NDK 23.1.7779620** + CMake 3.22.1）。
+NDK 版本必须和 `android/build.gradle` 里的 `ndkVersion` 一致 —— nodejs-mobile 会读这个值编自己的
+libnode，版本不对 CMake 直接失败。
+
+`build-apk.sh` 会自动生成 `boxclone.keystore`（密码 `boxclone` / 别名 `boxclone`），
+所以产物是**已签名**的，`adb install` 直接装，不用再处理。
+
+CI 走 `.github/workflows/build-apk.yml`（ubuntu-latest，15-25 分钟，比 iOS 快一倍多）。
+
 ### 安装（未签名 → 自签）
 
 - **Sideloadly**（Win/macOS，免费 Apple ID）
@@ -131,6 +152,20 @@ cd app/ios && pod install --repo-update && cd ../..
 - **TrollStore**（受支持 iOS 版本，永久签名）
 
 免费 Apple ID 签的 7 天过期，到期重签。
+
+Android 没有这层限制，APK 装完就是装完了。
+
+### 两个平台的差异点
+
+| | iOS | Android |
+|---|---|---|
+| 构建机 | macOS + Xcode 15.x | 任意系统 + JDK 17 + NDK |
+| 产物 | 未签名 ipa（要自签） | 已签名 apk（直接装） |
+| 后台播放 | `UIBackgroundModes: audio` + AVAudioSession playback | `WAKE_LOCK` 权限 |
+| 明文 http | ATS `NSAllowsArbitraryLoads` | `usesCleartextTraffic="true"` |
+| 返回键 | 无（靠手势/导航栏） | `BackHandler`（`Stack.tsx` 已处理） |
+| 底部安全区 | `SafeAreaView` 兜 home indicator | `TABBAR_BOTTOM` 多加 8dp 躲手势条 |
+| ABI | arm64 单一 | arm64-v8a + armeabi-v7a（nodejs-mobile 没有 x86） |
 
 ---
 
